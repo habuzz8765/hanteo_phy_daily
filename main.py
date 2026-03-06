@@ -6,8 +6,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 
 def run_scraper():
     chrome_options = Options()
@@ -15,6 +14,8 @@ def run_scraper():
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+    # 화면 크기를 고정하여 좌표의 정확도를 높입니다.
+    chrome_options.add_argument('--window-size=1920,1080')
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
@@ -23,29 +24,26 @@ def run_scraper():
         driver.get("https://www.hanteochart.com/chart/album/daily")
         time.sleep(10)
 
-        # 100위까지 '더보기' 버튼 클릭 반복
+        # 100위까지 도달하기 위해 반복 수행
         for i in range(1, 6):
-            print(f"🔄 {i}번째 '더보기' 버튼 정밀 탐색 중...")
+            print(f"🔄 {i}번째 데이터 확장 시도 중 (화면 하단 강제 클릭)...")
             
+            # 1. 화면의 맨 아래로 이동
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(3)
+
+            # 2. 버튼의 텍스트가 아닌 '위치'를 타겟팅하여 클릭 (ActionChains 활용)
+            # 화면 중앙 하단부를 클릭하여 '더보기' 버튼을 강제로 누릅니다.
             try:
-                # 1. 텍스트뿐만 아니라 버튼의 형태(XPath)를 여러 가지 방식으로 찾습니다.
-                # '더보기' 글자 포함 혹은 화살표 아이콘이 있는 버튼을 모두 타겟팅합니다.
-                wait = WebDriverWait(driver, 15)
-                more_button = wait.until(EC.presence_of_element_located((
-                    By.XPATH, "//button[contains(., '더보기')] | //div[contains(@class, 'more')]//button"
-                )))
-
-                # 2. 버튼이 화면 중앙에 오도록 스크롤합니다.
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
-                time.sleep(2)
-
-                # 3. 일반 클릭이 안 될 경우를 대비해 JavaScript로 강제 클릭을 시도합니다.
-                driver.execute_script("arguments[0].click();", more_button)
+                actions = ActionChains(driver)
+                # 바디 전체를 기준으로 하단 중앙 지점을 클릭하도록 명령
+                body = driver.find_element(By.TAG_NAME, 'body')
+                actions.move_to_element(body).move_by_offset(0, 450).click().perform()
                 
-                print(f"✅ {i}번째 클릭 성공! (다음 데이터를 기다립니다)")
-                time.sleep(6) # 데이터가 길게 늘어나는 시간을 충분히 확보
-            except:
-                print(f"⚠️ {i}번째에서 버튼을 찾지 못했습니다. 현재 화면까지 수집합니다.")
+                print(f"✅ {i}번째 클릭 명령 전송 완료")
+                time.sleep(7) # 로딩 대기
+            except Exception as e:
+                print(f"⚠️ 클릭 시도 중 알 수 없는 상태 발생: {str(e)}")
                 break
 
         # 전체 데이터 추출
@@ -71,11 +69,11 @@ def run_scraper():
         webapp_url = os.environ.get('WEBAPP_URL')
         if chart_list and webapp_url:
             final_data = chart_list[:100]
-            print(f"📤 총 {len(chart_list)}개 중 {len(final_data)}개를 시트로 전송!")
+            print(f"📤 총 {len(chart_list)}개 데이터 수집! {len(final_data)}개를 시트로 전송합니다.")
             res = requests.post(webapp_url, json=final_data)
             print(f"📡 서버 응답: {res.text}")
         else:
-            print("❌ 데이터 수집 실패")
+            print(f"❌ 데이터 수집 부족 (수집량: {len(chart_list)})")
 
     finally:
         driver.quit()

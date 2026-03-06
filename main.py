@@ -1,53 +1,54 @@
-import requests
-import time
 import os
+import time
+import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
 
 def run_scraper():
-    # 1. 한터차트 API 호출 (데이터 수집)
-    api_url = "https://api.hanteochart.com/v1/chart/album/daily"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Referer": "https://www.hanteochart.com/",
-        "Origin": "https://www.hanteochart.com"
-    }
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
     
+    # 1. 셀레늄으로 한터차트 접속
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     try:
-        print("🚀 한터차트 데이터 수집 중...")
-        response = requests.get(api_url, headers=headers, timeout=20)
-        
-        # 응답이 정상인지 확인
-        if response.status_code != 200:
-            print(f"❌ API 호출 실패: {response.status_code}")
-            return
+        print("🚀 한터차트 웹사이트 접속 중...")
+        driver.get("https://www.hanteochart.com/chart/album/daily")
+        time.sleep(10) # 페이지 로딩 대기
 
-        items = response.json().get('data', {}).get('list', [])
+        # 2. 텍스트 추출 및 간단 정제 (Buzz님의 이전 성공 로직 활용)
+        raw_text = driver.find_element(By.TAG_NAME, "body").text
+        lines = raw_text.split('\n')
         
-        # 2. 데이터 가공 (순위, 앨범명, 아티스트, 판매량, 음반지수, 수집일시)
         chart_list = []
-        for item in items[:100]:
-            chart_list.append([
-                item.get('ranking'), 
-                item.get('album_nm'), 
-                item.get('artist_nm'),
-                item.get('step_data'), 
-                item.get('data_val'), 
-                time.strftime('%Y-%m-%d %H:%M:%S')
-            ])
-
-        # 3. 구글 시트 웹앱으로 데이터 전송
-        # 깃허브 Secrets에 저장한 WEBAPP_URL을 불러옵니다.
-        webapp_url = os.environ.get('WEBAPP_URL')
+        start_index = next((i + 1 for i, line in enumerate(lines) if "음반 지수" in line), 0)
+        data_rows = lines[start_index:]
         
-        if not webapp_url:
-            print("❌ WEBAPP_URL 설정이 되어있지 않습니다.")
-            return
+        idx = 0
+        while idx < len(data_rows) - 4:
+            if data_rows[idx].isdigit():
+                chart_list.append([
+                    data_rows[idx], data_rows[idx+1], data_rows[idx+2], 
+                    data_rows[idx+3], data_rows[idx+4], time.strftime('%Y-%m-%d %H:%M:%S')
+                ])
+                idx += 5
+            else:
+                idx += 1
 
-        print("📤 구글 시트로 데이터를 전송합니다...")
-        res = requests.post(webapp_url, json=chart_list)
-        print(f"📡 서버 응답: {res.text}")
+        # 3. 구글 시트 웹앱으로 전송
+        webapp_url = os.environ.get('WEBAPP_URL')
+        if chart_list and webapp_url:
+            res = requests.post(webapp_url, json=chart_list[:100])
+            print(f"📡 전송 결과: {res.text}")
+        else:
+            print("❌ 수집된 데이터가 없거나 URL 설정 오류")
 
-    except Exception as e:
-        print(f"🚨 오류 발생: {e}")
+    finally:
+        driver.quit()
 
 if __name__ == "__main__":
     run_scraper()

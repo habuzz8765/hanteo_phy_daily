@@ -6,7 +6,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
 
 def run_scraper():
     chrome_options = Options()
@@ -14,39 +13,40 @@ def run_scraper():
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
-    # 화면 크기를 고정하여 좌표의 정확도를 높입니다.
-    chrome_options.add_argument('--window-size=1920,1080')
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
     try:
-        print("🚀 한터차트 접속 중...")
+        print("🚀 한터차트 접속 및 데이터 확장 시작...")
         driver.get("https://www.hanteochart.com/chart/album/daily")
         time.sleep(10)
 
-        # 100위까지 도달하기 위해 반복 수행
         for i in range(1, 6):
-            print(f"🔄 {i}번째 데이터 확장 시도 중 (화면 하단 강제 클릭)...")
-            
-            # 1. 화면의 맨 아래로 이동
+            print(f"🔄 {i}번째 데이터 확장 시도 중...")
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(3)
 
-            # 2. 버튼의 텍스트가 아닌 '위치'를 타겟팅하여 클릭 (ActionChains 활용)
-            # 화면 중앙 하단부를 클릭하여 '더보기' 버튼을 강제로 누릅니다.
+            # [핵심] 텍스트나 태그에 상관없이 '더보기' 아이콘이나 버튼 근처의 모든 요소를 찾아 클릭 시도
+            # 특히 'more'나 'btn' 단어가 포함된 클래스를 집중 공략합니다.
             try:
-                actions = ActionChains(driver)
-                # 바디 전체를 기준으로 하단 중앙 지점을 클릭하도록 명령
-                body = driver.find_element(By.TAG_NAME, 'body')
-                actions.move_to_element(body).move_by_offset(0, 450).click().perform()
+                # 1. '더보기' 혹은 화살표가 포함된 모든 요소를 찾음
+                elements = driver.find_elements(By.XPATH, "//*[contains(text(), '더보기')] | //*[contains(@class, 'more')] | //*[contains(@class, 'btn')]")
                 
-                print(f"✅ {i}번째 클릭 명령 전송 완료")
-                time.sleep(7) # 로딩 대기
-            except Exception as e:
-                print(f"⚠️ 클릭 시도 중 알 수 없는 상태 발생: {str(e)}")
-                break
+                # 2. 화면 하단에 위치한 요소들만 골라내어 클릭 신호를 보냄
+                clicked = False
+                for el in reversed(elements):
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].click();", el)
+                        clicked = True
+                        break # 하나라도 클릭 신호가 갔으면 대기 단계로
+                
+                if clicked:
+                    print(f"✅ {i}번째 클릭 신호 전송 완료")
+                    time.sleep(8) # 로딩 시간을 넉넉히 줍니다.
+            except:
+                continue
 
-        # 전체 데이터 추출
+        # 데이터 추출 로직 (이전과 동일)
         print("🔍 최종 데이터 수집 시작...")
         raw_text = driver.find_element(By.TAG_NAME, "body").text
         lines = raw_text.split('\n')
@@ -69,7 +69,7 @@ def run_scraper():
         webapp_url = os.environ.get('WEBAPP_URL')
         if chart_list and webapp_url:
             final_data = chart_list[:100]
-            print(f"📤 총 {len(chart_list)}개 데이터 수집! {len(final_data)}개를 시트로 전송합니다.")
+            print(f"📤 총 {len(chart_list)}개 데이터 수집! 상위 {len(final_data)}개를 전송합니다.")
             res = requests.post(webapp_url, json=final_data)
             print(f"📡 서버 응답: {res.text}")
         else:

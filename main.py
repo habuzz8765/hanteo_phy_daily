@@ -21,38 +21,35 @@ def run_scraper():
     try:
         print("🚀 한터차트 접속 중...")
         driver.get("https://www.hanteochart.com/chart/album/daily")
-        time.sleep(10) # 첫 화면 로딩 대기 시간 대폭 증대
+        time.sleep(10)
 
-        # 100위까지 '더보기' 버튼 클릭 반복 (최대 6번)
-        for i in range(1, 7):
-            print(f"🔄 {i}번째 '더보기' 버튼 탐색 시도 중...")
+        # 100위까지 '더보기' 버튼 클릭 반복
+        for i in range(1, 6):
+            print(f"🔄 {i}번째 '더보기' 버튼 정밀 탐색 중...")
             
-            success = False
-            for retry in range(3): # 버튼을 찾기 위해 3번 재시도
-                # 화면을 조금씩 아래로 내려 버튼 노출 유도
-                driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {0.3 * (retry + 1)});")
-                time.sleep(3)
+            try:
+                # 1. 텍스트뿐만 아니라 버튼의 형태(XPath)를 여러 가지 방식으로 찾습니다.
+                # '더보기' 글자 포함 혹은 화살표 아이콘이 있는 버튼을 모두 타겟팅합니다.
+                wait = WebDriverWait(driver, 15)
+                more_button = wait.until(EC.presence_of_element_located((
+                    By.XPATH, "//button[contains(., '더보기')] | //div[contains(@class, 'more')]//button"
+                )))
 
-                try:
-                    # 버튼이 클릭 가능한 상태가 될 때까지 20초간 끈질기게 대기
-                    wait = WebDriverWait(driver, 20)
-                    more_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(., '더보기')]")))
-                    
-                    # 버튼 클릭
-                    driver.execute_script("arguments[0].click();", more_button)
-                    print(f"✅ {i}번째 클릭 성공!")
-                    time.sleep(7) # 데이터 로딩 시간 충분히 확보
-                    success = True
-                    break
-                except:
-                    print(f"🔍 {i}번째 {retry+1}번 시도: 아직 버튼을 찾는 중...")
+                # 2. 버튼이 화면 중앙에 오도록 스크롤합니다.
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
+                time.sleep(2)
 
-            if not success:
-                print(f"🏁 {i}번째 시도 끝에 버튼이 더 이상 없는 것으로 판단되어 수집을 시작합니다.")
+                # 3. 일반 클릭이 안 될 경우를 대비해 JavaScript로 강제 클릭을 시도합니다.
+                driver.execute_script("arguments[0].click();", more_button)
+                
+                print(f"✅ {i}번째 클릭 성공! (다음 데이터를 기다립니다)")
+                time.sleep(6) # 데이터가 길게 늘어나는 시간을 충분히 확보
+            except:
+                print(f"⚠️ {i}번째에서 버튼을 찾지 못했습니다. 현재 화면까지 수집합니다.")
                 break
 
         # 전체 데이터 추출
-        print("🔍 최종 데이터 추출 시작...")
+        print("🔍 최종 데이터 수집 시작...")
         raw_text = driver.find_element(By.TAG_NAME, "body").text
         lines = raw_text.split('\n')
         
@@ -74,11 +71,11 @@ def run_scraper():
         webapp_url = os.environ.get('WEBAPP_URL')
         if chart_list and webapp_url:
             final_data = chart_list[:100]
-            print(f"📤 총 {len(chart_list)}개 데이터 수집 완료! 상위 {len(final_data)}개를 전송합니다.")
+            print(f"📤 총 {len(chart_list)}개 중 {len(final_data)}개를 시트로 전송!")
             res = requests.post(webapp_url, json=final_data)
             print(f"📡 서버 응답: {res.text}")
         else:
-            print(f"❌ 데이터 수집 부족 (현재 수집량: {len(chart_list)})")
+            print("❌ 데이터 수집 실패")
 
     finally:
         driver.quit()

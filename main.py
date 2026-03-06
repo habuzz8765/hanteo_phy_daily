@@ -13,14 +13,18 @@ def run_scraper():
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     
-    # 1. 셀레늄으로 한터차트 접속
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     try:
-        print("🚀 한터차트 웹사이트 접속 중...")
+        print("🚀 한터차트 접속 및 100위까지 로딩 시작...")
         driver.get("https://www.hanteochart.com/chart/album/daily")
-        time.sleep(10) # 페이지 로딩 대기
+        time.sleep(5) 
 
-        # 2. 텍스트 추출 및 간단 정제 (Buzz님의 이전 성공 로직 활용)
+        # [추가된 부분] 100위까지 로딩하기 위해 화면을 끝까지 3번 내립니다.
+        for _ in range(3):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(3) # 로딩 대기
+
+        # 데이터 추출 로직
         raw_text = driver.find_element(By.TAG_NAME, "body").text
         lines = raw_text.split('\n')
         
@@ -39,13 +43,13 @@ def run_scraper():
             else:
                 idx += 1
 
-        # 3. 구글 시트 웹앱으로 전송
         webapp_url = os.environ.get('WEBAPP_URL')
         if chart_list and webapp_url:
-            res = requests.post(webapp_url, json=chart_list[:100])
+            # 100개까지만 잘라서 전송
+            final_data = chart_list[:100]
+            print(f"📤 {len(final_data)}개의 데이터를 시트로 보냅니다...")
+            res = requests.post(webapp_url, json=final_data)
             print(f"📡 전송 결과: {res.text}")
-        else:
-            print("❌ 수집된 데이터가 없거나 URL 설정 오류")
 
     finally:
         driver.quit()

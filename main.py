@@ -6,6 +6,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
 
 def run_scraper():
     chrome_options = Options()
@@ -15,16 +16,24 @@ def run_scraper():
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     try:
-        print("🚀 한터차트 접속 및 100위까지 로딩 시작...")
+        print("🚀 한터차트 접속 중...")
         driver.get("https://www.hanteochart.com/chart/album/daily")
-        time.sleep(5) 
+        time.sleep(7) 
 
-        # [추가된 부분] 100위까지 로딩하기 위해 화면을 끝까지 3번 내립니다.
-        for _ in range(3):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(3) # 로딩 대기
+        # 100위까지 '더보기' 버튼 클릭 (약 4~5번)
+        click_count = 0
+        while click_count < 5:
+            try:
+                more_button = driver.find_element(By.XPATH, "//button[contains(text(), '더보기')]")
+                print(f"➕ {click_count + 1}번째 '더보기' 클릭 중...")
+                driver.execute_script("arguments[0].click();", more_button)
+                time.sleep(3) 
+                click_count += 1
+            except NoSuchElementException:
+                print("🏁 모든 데이터를 불러왔습니다.")
+                break
 
-        # 데이터 추출 로직
+        # 데이터 추출
         raw_text = driver.find_element(By.TAG_NAME, "body").text
         lines = raw_text.split('\n')
         
@@ -45,11 +54,12 @@ def run_scraper():
 
         webapp_url = os.environ.get('WEBAPP_URL')
         if chart_list and webapp_url:
-            # 100개까지만 잘라서 전송
             final_data = chart_list[:100]
-            print(f"📤 {len(final_data)}개의 데이터를 시트로 보냅니다...")
+            print(f"📤 최종 {len(final_data)}개의 데이터를 시트로 전송합니다!")
             res = requests.post(webapp_url, json=final_data)
             print(f"📡 전송 결과: {res.text}")
+        else:
+            print("❌ 수집 실패 또는 URL 설정 확인 필요")
 
     finally:
         driver.quit()

@@ -1,0 +1,29 @@
+name: Hanteo Daily Scraper
+
+on:
+  schedule:
+    # 매일 한국 시간 오전 9시 (UTC 00:00) 에 실행
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 수동으로도 실행할 수 있게 버튼을 만듭니다.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run Scraper
+      env:
+        WEBAPP_URL: ${{ secrets.WEBAPP_URL }}
+      run: python main.py
